@@ -1,0 +1,20 @@
+{
+  "name": "jevchrome",
+  "version": "0.1.0",
+  "description": "EXECUTER: Ultra-MVP pump.fun automated trade closer & exit guardian",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/exit_rules.test.mjs"
+  },
+  "keywords": [
+    "pump.fun",
+    "solana",
+    "trading",
+    "trailing-stop",
+    "time-stop",
+    "chrome-extension",
+    "executer"
+  ],
+  "author": "TrivelaAS",
+  "license": "MIT"
+}

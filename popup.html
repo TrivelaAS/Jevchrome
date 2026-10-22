@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>EXECUTER</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo">🛡️</div>
+        <div>
+          <div class="title">EXECUTER</div>
+          <div class="subtitle">pump.fun Exit Guardian • Combo 2+4</div>
+        </div>
+      </div>
+      <div class="status-indicator">
+        <span class="pulse-dot"></span>
+        <span class="status-text" id="status-text">ACTIVE</span>
+      </div>
+    </header>
+
+    <!-- Quick Action Bar -->
+    <div class="action-bar">
+      <button id="btn-track-active" class="btn btn-primary">
+        + Track Current Pump.fun Tab
+      </button>
+      <button id="btn-toggle-manual" class="btn btn-secondary">
+        + Manual Mint
+      </button>
+      <button id="btn-poll-now" class="btn btn-icon" title="Refresh prices now">
+        ↻
+      </button>
+    </div>
+
+    <!-- Manual Add Form (Collapsible) -->
+    <div id="manual-form" class="manual-form hidden">
+      <div class="form-row">
+        <input type="text" id="manual-mint" placeholder="Solana Mint Address..." class="input-text">
+      </div>
+      <div class="form-row flex-gap">
+        <input type="text" id="manual-symbol" placeholder="Symbol (e.g. PEPE)" class="input-text flex-1">
+        <input type="number" id="manual-price" placeholder="Entry Price / Mcap" step="any" class="input-text flex-1">
+        <button id="btn-submit-manual" class="btn btn-primary">Track</button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs">
+      <button class="tab-btn active" data-tab="open">Open Positions (<span id="count-open">0</span>)</button>
+      <button class="tab-btn" data-tab="history">Closed History (<span id="count-closed">0</span>)</button>
+      <button class="tab-btn" data-tab="settings">Config ⚙</button>
+    </div>
+
+    <!-- Tab 1: Open Positions -->
+    <main id="tab-open" class="tab-content active">
+      <div id="positions-list" class="positions-list">
+        <div class="empty-state">No open positions. Track a pump.fun coin above or click buy on pump.fun.</div>
+      </div>
+    </main>
+
+    <!-- Tab 2: Closed History -->
+    <section id="tab-history" class="tab-content">
+      <div id="history-list" class="history-list">
+        <div class="empty-state">No closed trades recorded yet.</div>
+      </div>
+    </section>
+
+    <!-- Tab 3: Settings -->
+    <section id="tab-settings" class="tab-content">
+      <div class="settings-card">
+        <div class="settings-header">Exit Engine Configuration (Combo 2 + 4)</div>
+        
+        <div class="form-group">
+          <label for="cfg-arm-x">
+            <span>Trailing Arm Threshold</span>
+            <span class="label-hint">Peak multiple to activate trail (default: 1.3x)</span>
+          </label>
+          <div class="input-affix-wrap">
+            <input type="number" id="cfg-arm-x" step="0.05" min="1.0" class="input-text">
+            <span class="affix">x</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="cfg-trail-pct">
+            <span>Trailing Stop Drop</span>
+            <span class="label-hint">Pullback from peak to trigger sell (default: 25%)</span>
+          </label>
+          <div class="input-affix-wrap">
+            <input type="number" id="cfg-trail-pct" step="1" min="1" max="90" class="input-text">
+            <span class="affix">%</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="cfg-trail-confirm">
+            <span>Confirmation Checks</span>
+            <span class="label-hint">Consecutive checks below stop line (default: 2)</span>
+          </label>
+          <input type="number" id="cfg-trail-confirm" step="1" min="1" max="10" class="input-text">
+        </div>
+
+        <div class="form-group">
+          <label for="cfg-unarmed-time">
+            <span>Unarmed Time Stop</span>
+            <span class="label-hint">Auto-sell if never reached 1.3x (default: 60 min)</span>
+          </label>
+          <div class="input-affix-wrap">
+            <input type="number" id="cfg-unarmed-time" step="5" min="5" class="input-text">
+            <span class="affix">min</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="cfg-max-hold">
+            <span>Max Hold Time Stop</span>
+            <span class="label-hint">Hard backstop duration (default: 240 min / 4h)</span>
+          </label>
+          <div class="input-affix-wrap">
+            <input type="number" id="cfg-max-hold" step="10" min="10" class="input-text">
+            <span class="affix">min</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="cfg-poll-sec">
+            <span>Price Poll Interval</span>
+            <span class="label-hint">How often background checks prices (default: 10s)</span>
+          </label>
+          <div class="input-affix-wrap">
+            <input type="number" id="cfg-poll-sec" step="1" min="3" max="60" class="input-text">
+            <span class="affix">sec</span>
+          </div>
+        </div>
+
+        <div class="settings-actions">
+          <button id="btn-save-settings" class="btn btn-primary">Save Config</button>
+          <button id="btn-reset-settings" class="btn btn-secondary">Reset Defaults</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-left">Unknown price is never zero guard: <span class="text-green">ENABLED</span></div>
+      <div class="footer-right">v0.1.0</div>
+    </footer>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

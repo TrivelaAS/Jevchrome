@@ -1,5 +1,7 @@
 node_modules/
-dist/
+server/.cache/
+dist/*
+!dist/bullshtt-ai-extension.zip
 .env
 .env.local
 .DS_Store

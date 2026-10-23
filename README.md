@@ -1,75 +1,123 @@
-# 🛡️ EXECUTER — pump.fun Exit Guardian
+# 💩 bullshtt.ai — X.com Bullshit Scorer & Auto-Answer
 
-> **Ultra-MVP Automated Trade Closer for pump.fun powered by the Combo 2 + 4 Exit Engine (Trailing Stop from Peak + Time Stops).**
+> **Real-time X.com bullshit & rage-bait detector + 1-click objective auto-answer Chrome Extension powered by TypeSafe Jev (`jev-1.14.0`).**
+> Every reply ends with: `rated XX% on stinkiness by bullshtt.ai`.
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
-[![Tests](https://img.shields.io/badge/Tests-10%20passed-brightgreen.svg)]()
-[![Platform: pump.fun](https://img.shields.io/badge/Platform-pump.fun-26b5ce.svg)](https://pump.fun)
+[![Model: jev-1.14.0](https://img.shields.io/badge/Jev-jev--1.14.0-purple.svg)](https://typesafe.ai)
+[![Tests](https://img.shields.io/badge/Tests-8%20passed%20(unit%20%2B%20live)-brightgreen.svg)]()
+[![Platform: X.com](https://img.shields.io/badge/Platform-X.com%20%2F%20Twitter-black.svg)](https://x.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
 ## 📌 Executive Overview
 
-Hans executes buys on signals manually on **[pump.fun](https://pump.fun)** (`https://pump.fun/*`). Without strict automated exit enforcement, profitable runs round-trip back to entry and stagnant coins are forgotten until they bleed to zero.
+Social feeds on **X.com** are saturated with manufactured rage bait, engagement-farming DM gates (*"Comment CHEAT to get my secret prompt"*), unverified miracle claims (*"Made $420k in 7 days using Claude 3.7"*), and hustle grift. Readers waste attention arguing with bad-faith engagement bots or falling into predatory marketing funnels.
 
-**EXECUTER (`EXE-1`)** is a clean, self-contained **Manifest V3 Chrome Extension** that acts as an automated trade closer and high-water mark guardian:
-1. **Manual Entry**: Hans executes buys on pump.fun.
-2. **1-Click or Auto Tracking**: EXECUTER registers the mint, entry price/mcap, and timestamp.
-3. **Continuous Background Surveillance**: Poller checks multi-source price feeds every 10 seconds.
-4. **Deterministic Auto-Sell**: When exit conditions trigger, EXECUTER dispatches 100% sell execution to pump.fun so positions never go to zero.
+**bullshtt.ai (`Jevchrome`)** turns the tide with calibrated, typed semantic judgment powered by **TypeSafe Jev (`jev-1.14.0`)**:
+
+1. **Passive In-Feed Telemetry**: As you scroll X.com, visible tweets are batched and evaluated against a 7-question Jev semantic battery.
+2. **Visual Stinkiness Badge**: Each tweet receives an instant score indicator:
+   - 🔴 **Stinky (75–100%)**: Blatant hustle slop, rage bait, or engagement farming.
+   - 🟡 **Sus (40–74%)**: Sensationalized marketing, partial evidence, or promotional hype.
+   - 🟢 **Clean (1–39%)**: Genuine insight, reproducible research, or grounded news reporting.
+3. **Firewall Modes**:
+   - **X-Ray Pill Badge**: Subtle badge next to the user handle with interactive telemetry popover on click.
+   - **Collapse Shield Banner**: Collapses high-stinkiness posts behind a content shield until explicitly expanded.
+4. **1-Click Auto-Answer in X Reply**: Inserts a concise, objective breakdown directly into X's reply composer (under 275 chars), strictly signed with:
+   ```
+   💩 BS Audit (@handle):
+   • 99% Engagement-bait DM gate
+   • 97% Implausible claim
+   • 97% Zero verifiable proof
+   • 82% Incoherent mechanism
+   Verdict: Engagement-Bait Slop
+
+   rated 89% on stinkiness by bullshtt.ai
+   ```
+5. **High-DPI Scorecard PNG Receipt**: Generates a 1200×630 dark-mode canvas receipt card copied straight to your clipboard (image + text) ready to paste (`Ctrl+V`) into your X reply as visual proof.
 
 ---
 
-## ⚡ Exit Policy: Combo 2 + 4
+## 🧠 The 7-Question Jev Battery
 
-EXECUTER implements a pure, testable, and deterministic exit engine:
+Unlike brittle prompt-and-parse LLM wrappers, **bullshtt.ai** executes a calibrated, typed judgment battery in a single batched HTTP request to `https://api.typesafe.ai/v1/systemone` using **`jev-1.14.0`**:
 
 ```mermaid
 flowchart TD
-    Buy["Hans Buys Coin on pump.fun"] --> Track["EXECUTER Tracks Position<br/>(entryPrice, peakPrice, openedAt)"]
-    Track --> Poll["Background Poller (10s)<br/>(DexScreener / pump.fun / Jupiter)"]
+    Tweet["Tweet on X.com Timeline<br/>(author, handle, text, metrics)"] --> Hash["Compute Deterministic Hash<br/>(computePostHash: author + text)"]
+    Hash --> CacheCheck{"Cached Fresh Verdict?<br/>(TTL: 7 days)"}
     
-    Poll --> DQ{"Price Valid?<br/>(> 0 & finite)"}
-    DQ -- "No (null/NaN/0)" --> Wait["WAIT (unknown_price)<br/>No False Stopout!"]
+    CacheCheck -- "Hit" --> CachedResult["Return Cached Scorecard<br/>(0ms latency, zero API calls)"]
+    CacheCheck -- "Miss" --> Batcher["Debounced Batcher (400ms)<br/>(Aggregates viewport tweets)"]
     
-    DQ -- "Yes" --> PeakCheck["Update peakPrice = max(peak, currentPrice)"]
-    PeakCheck --> ArmCheck{"Peak >= 1.3x Entry?"}
+    Batcher --> JevCall["POST https://api.typesafe.ai/v1/systemone<br/>Model: jev-1.14.0"]
     
-    ArmCheck -- "Yes" --> ArmedState["ARMED: Trailing Active<br/>Stop Line = Peak * 0.75 (-25%)"]
-    ArmCheck -- "No" --> UnarmedState["UNARMED: Monitoring<br/>Time Stop Clock Running"]
+    subgraph JevBattery["7-Question Jev Semantic Battery"]
+        direction TB
+        Q1["implausible_claim (noul 0..1)<br/>Extraordinary windfall without primary proof?"]
+        Q2["incoherent_mechanism (noul 0..1)<br/>Logically/economically incoherent workflow?"]
+        Q3["zero_verifiable_evidence (noul 0..1)<br/>Missing reproducible code/data/sources?"]
+        Q4["engagement_farming_gate (noul 0..1)<br/>Comment/RT/Like DM-gate funnel?"]
+        Q5["manufactured_rage_bait (noul 0..1)<br/>Deliberate tribal/outrage emotional bait?"]
+        Q6["bullshit_tier (score 0..4)<br/>Level 0 (grounded) to Level 4 (pure scam)"]
+        Q7["primary_intent (choice 7 options)<br/>genuine_insight | news_reporting | engagement_bait_slop | rage_bait | hustle_grift | satire | other"]
+    end
     
-    ArmedState --> TrailCheck{"Price <= Stop Line?"}
-    TrailCheck -- "Yes" --> Breach["Increment breachCount"]
-    Breach --> Confirm{"breachCount >= 2?"}
-    Confirm -- "Yes" --> SellTrail["🚨 SELL: trailing_stop"]
-    Confirm -- "No" --> WaitConfirm["WAIT: confirming_trailing_stop"]
+    JevCall --> JevBattery
+    JevBattery --> Validate["validateJevResponse<br/>(Invariants: model non-empty, sum P = 1.0 ± 0.05, argmax match)"]
     
-    TrailCheck -- "No" --> ResetBreach["Reset breachCount = 0"]
-    ResetBreach --> MaxHoldCheck{"Age >= 240 min?"}
+    Validate --> Composite["Deterministic Policy Engine (scoreBatchFromJev)<br/>hustleScore = 0.30*implausible + 0.30*incoherent + 0.20*no_proof + 0.20*gate<br/>rageScore = 0.45*rage + 0.25*implausible + 0.20*no_proof + 0.10*incoherent<br/>rawScore = max(hustle, rage)*0.85 + tierNorm*0.15"]
     
-    UnarmedState --> UnarmedTimer{"Age >= 60 min?"}
-    UnarmedTimer -- "Yes" --> SellUnarmed["🚨 SELL: time_stop_unarmed"]
-    UnarmedTimer -- "No" --> MaxHoldCheck
+    Composite --> SatireCheck{"primaryIntent == 'satire'<br/>Confidence >= 0.80 & Margin >= 0.15?"}
+    SatireCheck -- "Yes" --> Damped["Dampen Score: rawScore * 0.35<br/>(Protects Parody & Satire)"]
+    SatireCheck -- "No" --> Undamped["Keep Full Score"]
     
-    MaxHoldCheck -- "Yes" --> SellMax["🚨 SELL: time_stop_max"]
-    MaxHoldCheck -- "No" --> Hold["HOLD: Position Safe"]
+    Damped --> FinalScore["stinkinessPct = clamp(1..100)<br/>Auto-Answer Text Generated"]
+    Undamped --> FinalScore
+    FinalScore --> UI["In-Feed DOM Overlay<br/>Badge / Shield / Telemetry Popover"]
 ```
 
-### 1. Rule 1 — Trailing Stop from Peak (Combo 2)
-- **Arming Threshold (`trailArmX = 1.3x`)**: The trailing stop activates only once the token has proven traction (+30% gain).
-- **Trailing Stop Line (`trailPct = 25%`)**: Auto-sells if price drops 25% below its highest high-water mark (`peakPrice`).
-- **Debounce Confirmation (`trailConfirm = 2`)**: Requires 2 consecutive price checks below the line to protect against flash wicks and momentary slippage spikes.
+### Battery Breakdown:
 
-### 2. Rule 2 — Unarmed Time Stop (Combo 4)
-- **Stagnation Cutoff (`unarmedTimeStopMin = 60 min`)**: If a token fails to arm within 60 minutes, it automatically exits at 100% to free up capital before it bleeds to zero.
+| Question Key | Question Type | Calibration Target |
+| :--- | :--- | :--- |
+| `implausible_claim` | `noul` (0..1) | Extraordinary financial, statistical, or factual claim without primary evidence |
+| `incoherent_mechanism` | `noul` (0..1) | Buzzword salad, logically or economically impossible mechanisms |
+| `zero_verifiable_evidence` | `noul` (0..1) | Fails to provide reproducible code, links, primary data, or testable citations |
+| `engagement_farming_gate` | `noul` (0..1) | Artificial gatekeeping (*"Comment X to get DM"*, follow-to-unlock, fake giveaway) |
+| `manufactured_rage_bait` | `noul` (0..1) | Tribal provocation, strawman attacks, outrage farming designed to provoke angry replies |
+| `bullshit_tier` | `score` (0..4) | **Level 0**: Grounded/credible → **Level 4**: Pure fabricated grift / outrage scam |
+| `primary_intent` | `choice` | 7 discrete options: `genuine_insight`, `news_reporting`, `engagement_bait_slop`, `rage_bait`, `hustle_grift`, `satire`, `other` |
 
-### 3. Rule 3 — Max Hold Time Stop (Combo 4)
-- **Hard Ceiling (`maxHoldMin = 240 min / 4h`)**: Absolute backstop hold limit. No meme trade runs past 4 hours unmonitored.
+### Satire Protection
+Satire and humorous shitposting should never be conflated with malicious grift. If `primary_intent` is `satire` with confidence $\ge 0.80$ and an argmax margin $\ge 0.15$, the composite score is damped by **$65\%$** (`rawScore * 0.35`), marking the post safely as *Satire / Parody*.
 
-### 4. Data Quality Guarantee: Unknown Is Never Zero
-- If network drops, API rate limits, or price returns `null`, `undefined`, `NaN`, or `<= 0`, the engine returns `{ action: "WAIT", reason: "unknown_price" }`.
-- **Zero false stop-outs on failed fetches**.
+---
+
+## ⚡ 1-Click Auto-Answer in Action
+
+When you spot a suspicious tweet, click the **`⚡ Auto-Answer in X Reply`** action button.
+
+```
++------------------------------------------------------------------------+
+| 💩 BS Audit (@techluisenzo):                                           |
+| • 99% Engagement-bait DM gate                                          |
+| • 97% Implausible claim                                                |
+| • 97% Zero verifiable proof                                            |
+| • 82% Incoherent mechanism                                             |
+| Verdict: Engagement-Bait Slop                                          |
+|                                                                        |
+| rated 91% on stinkiness by bullshtt.ai                                 |
++------------------------------------------------------------------------+
+```
+
+### Key Auto-Answer Features:
+- **Direct Editor Injection**: Automatically opens X's native reply composer and injects the text via Lexical/Draft.js reactive synthetic events.
+- **Strict Signature Requirement**: Every message unconditionally ends with **`rated XX% on stinkiness by bullshtt.ai`**.
+- **Character Limit Respected**: Dynamically sized to stay under **275 characters** so it posts immediately without requiring an X Premium subscription.
+- **1200×630 Scorecard PNG**: Click **`🖼️ Copy Receipt Card PNG + Text`** to render a high-DPI dark-mode telemetry summary on HTML5 Canvas and write both `image/png` and `text/plain` to your clipboard for instant pasting.
 
 ---
 
@@ -79,83 +127,134 @@ flowchart TD
 .
 ├── manifest.json              # Chrome Manifest V3 specification
 ├── engine/
-│   └── exit_rules.js          # Pure deterministic exit engine & metrics
+│   └── bs_scorer.js           # Core Jev scoring battery, composite policy & validators
 ├── tests/
-│   └── exit_rules.test.mjs    # Node.js native unit test suite (100% pass)
-├── background.js              # Service worker poller & auto-sell dispatcher
-├── content.js                 # pump.fun DOM injector (pill & auto-seller)
-├── popup.html                 # Sober terminal dark-theme UI
-├── popup.js                   # Extension popup state controller
-├── popup.css                  # Terminal aesthetics & color palette
-├── icons/                     # Extension icons (16px, 48px, 128px)
-├── package.json               # Scripts & metadata
+│   └── bs_scorer.test.mjs     # 8 Node.js unit + live Jev integration tests
+├── server/
+│   └── proxy.mjs              # Local Node.js / Cloudflare Worker caching proxy
+├── scripts/
+│   └── package-extension.mjs  # Production packager & validator (builds dist/ zip)
+├── dist/
+│   └── bullshtt-ai-extension.zip # Release-ready Chrome Web Store package
+├── background.js              # Extension service worker (batch coordinator & proxy client)
+├── content.js                 # X.com DOM observer, badge pills, firewall shield & reply injector
+├── popup.html                 # Extension popup UI (manual tester, live feed & settings)
+├── popup.js                   # Popup state controller & connection tester
+├── popup.css                  # Dark-mode dashboard styling
+├── icons/                     # Extension branding icons (16px, 48px, 128px)
+├── package.json               # Scripts & dependencies
 └── README.md
 ```
 
 ---
 
-## 🧪 Unit Test Suite
+## 🚀 Quick-Start Guide
 
-Run the unit tests natively with Node 20+:
+### Option A: Local Proxy Mode (Recommended)
+
+Running the local proxy provides automatic file-based deduplication and persistent disk caching:
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/TrivelaAS/Jevchrome.git
+   cd Jevchrome
+   ```
+
+2. **Set your TypeSafe API key**:
+   Ensure `TYPESAFE_API_KEY` is exported in your environment or present in `/mnt/c/Claudeprojects/.env.local`:
+   ```bash
+   export TYPESAFE_API_KEY="ts_live_..."
+   ```
+
+3. **Start the proxy server**:
+   ```bash
+   npm start
+   ```
+   *The proxy starts on `http://127.0.0.1:8787` with health endpoint at `GET /api/health` and batched scoring at `POST /api/score`.*
+
+4. **Load into Google Chrome**:
+   1. Open Chrome and go to `chrome://extensions/`.
+   2. Turn on **Developer mode** in the top right.
+   3. Click **Load unpacked** and select the `/mnt/c/Claudeprojects/Jevchrome` directory.
+   4. Open [X.com](https://x.com) and start scrolling!
+
+---
+
+### Option B: Direct Developer Key Mode (No Proxy Required)
+
+If you prefer running standalone without the local background proxy:
+
+1. Load the extension unpacked in `chrome://extensions/`.
+2. Click the extension icon in Chrome's toolbar to open the **bullshtt.ai** popup.
+3. Switch to the **⚙️ Settings & Connection** tab.
+4. Enter your TypeSafe API Key (`ts_live_...`) under **TypeSafe API Key (Local Fallback)**.
+5. Click **💾 Save Settings** and **⚡ Test Connection**. The extension will communicate directly with `https://api.typesafe.ai/v1/systemone` using model `jev-1.14.0`.
+
+---
+
+## 🧪 Verification & Test Suite
+
+bullshtt.ai includes a comprehensive test suite running under Node.js native test runner (`node:test`):
 
 ```bash
 npm test
 ```
 
-### Output:
+### Test Suite Output:
 ```
-✔ Data Quality Guard: Unknown is never zero (0.6ms)
-✔ Arming threshold: arms at 1.3x entry by default and stays armed (0.1ms)
-✔ Trailing stop: triggers after confirmed consecutive checks below high-water mark (0.7ms)
-✔ Trailing stop: resets breach count if price bounces back above stop line (0.1ms)
-✔ Unarmed Time Stop: closes stagnant positions after 60 min if peak < 1.3x (0.1ms)
-✔ Armed position does NOT trigger unarmed time stop at 60 minutes (0.1ms)
-✔ Max Hold Time Stop: hard exit after 240 minutes regardless of armed status (0.1ms)
-✔ calculatePositionMetrics returns correct multiples and stops (0.1ms)
-✔ Custom config overrides are respected (0.1ms)
-✔ Full pump.fun trade lifecycle simulation (0.2ms)
+> jevchrome@0.1.0 test
+> node --test tests/bs_scorer.test.mjs
 
-ℹ tests 10
-ℹ pass 10
+✔ computePostHash produces deterministic 16-hex hash with case-normalization
+✔ buildJevBatchRequest builds valid Jev payload with explicit record identifiers
+✔ validateJevResponse accepts conforming response and rejects invalid shapes
+✔ scoreBatchFromJev computes accurate composite scores and checks satire damping
+✔ formatAutoAnswer formats full and compact replies with required signature and < 280 chars
+✔ isCacheEntryFresh verifies entry freshness, versions, and expiration
+✔ Live integration test against TypeSafe Jev API (jev-1.14.0) with @techluisenzo post
+✔ Proxy server endpoints: CORS, GET /api/health, and POST /api/score caching
+
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
 ℹ fail 0
 ```
 
 ---
 
-## 🚀 Installation & Loading into Chrome
+## 📦 Building the Chrome Web Store Bundle
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/TrivelaAS/Jevchrome.git
-   ```
-2. Open Google Chrome and navigate to:
-   ```
-   chrome://extensions/
-   ```
-3. Enable **Developer mode** in the top right corner.
-4. Click **Load unpacked**.
-5. Select the `Jevchrome` repository folder.
-6. Navigate to `https://pump.fun` to see the 1-click **"🛡️ Track in EXECUTER"** action pill on coin pages!
+To validate all Manifest V3 schemas and package the production zip file for distribution:
+
+```bash
+npm run package
+```
+
+This builds `dist/bullshtt-ai-extension.zip` containing:
+- `manifest.json` (V3 compliant)
+- `background.js` (service worker)
+- `content.js` (DOM injector)
+- `engine/bs_scorer.js` (Jev engine)
+- `popup.html`, `popup.css`, `popup.js` (popup UI)
+- `icons/` (16px, 48px, 128px)
 
 ---
 
 ## ⚙️ Configuration Reference
 
-All parameters can be tuned live in the extension's **Config ⚙** tab:
+Tuning options available in the extension's **⚙️ Settings** tab:
 
-| Parameter | Default | Description |
+| Setting | Default | Description |
 | :--- | :--- | :--- |
-| `trailArmX` | `1.30x` | Multiplier required to arm trailing stop (+30%) |
-| `trailPct` | `25%` | Drawdown from high-water mark to trigger exit |
-| `trailConfirm` | `2` | Consecutive poll checks required to confirm breach |
-| `unarmedTimeStopMin` | `60 min` | Max wait time before cutting unarmed positions |
-| `maxHoldMin` | `240 min` | Hard ceiling holding duration (4 hours) |
-| `checkIntervalSec` | `10 sec` | Polling interval between price evaluations |
+| **Auto-Scan Viewport** | `Enabled` | Automatically scores visible tweets as you scroll X.com |
+| **Firewall Mode** | `X-Ray Badge` | Choose between subtle badges (`xray`) or collapsing stinky tweets behind a shield (`collapse`) |
+| **Stinkiness Threshold** | `75%` | Score cutoff (50% to 95%) that triggers stinky alerts / shields |
+| **Auto-Answer Style** | `Full` | `Full` (multi-bullet telemetry breakdown) or `Compact` (single-line summary) |
+| **Proxy Endpoint** | `http://127.0.0.1:8787/api/score` | Local caching proxy or remote cloud endpoint |
+| **TypeSafe API Key** | — | Direct API key fallback for autonomous operation without a proxy |
 
 ---
 
-## 🔒 Security & Privacy
+## 📄 License
 
-- No external telemetry tracking.
-- All trade state is saved locally in `chrome.storage.local`.
-- Zero private key exposure—executions trigger via user's active browser session and DOM interactions.
+MIT © [TrivelaAS](https://github.com/TrivelaAS)

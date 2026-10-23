@@ -1,20 +1,20 @@
 {
   "manifest_version": 3,
-  "name": "EXECUTER — pump.fun Exit Guardian",
-  "version": "0.1.0",
-  "description": "Ultra-MVP automated trade closer for pump.fun with Combo 2+4 trailing stop and time stop rules.",
+  "name": "bullshtt.ai — X.com BS Scorer & Auto-Answer",
+  "version": "1.0.0",
+  "description": "Real-time X.com bullshit & rage-bait detector + 1-click objective auto-answer ('rated 89% on stinkiness by bullshtt.ai') powered by Jev.",
   "permissions": [
     "storage",
-    "alarms",
-    "tabs",
-    "scripting"
+    "activeTab",
+    "clipboardWrite"
   ],
   "host_permissions": [
-    "https://pump.fun/*",
-    "https://frontend-api.pump.fun/*",
-    "https://api.jup.ag/*",
-    "https://api.typesafe.ai/*",
-    "https://api.dexscreener.com/*"
+    "https://x.com/*",
+    "https://twitter.com/*",
+    "https://api.bullshtt.ai/*",
+    "http://localhost:8787/*",
+    "http://127.0.0.1:8787/*",
+    "https://api.typesafe.ai/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -23,17 +23,18 @@
   "content_scripts": [
     {
       "matches": [
-        "https://pump.fun/*"
+        "https://x.com/*",
+        "https://twitter.com/*"
       ],
       "js": [
         "content.js"
       ],
-      "run_at": "document_end"
+      "run_at": "document_idle"
     }
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "EXECUTER",
+    "default_title": "bullshtt.ai",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

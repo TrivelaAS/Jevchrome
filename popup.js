@@ -1,363 +1,425 @@
 /**
- * EXECUTER Popup UI Controller
- * Sober terminal dark-theme UI for managing open pump.fun positions,
- * viewing live exit metrics (Combo 2+4), and editing configuration.
+ * bullshtt.ai — Popup Controller
+ * Dashboard, Live X.com Telemetry Feed, Manual Tweet Tester & Configuration.
  */
 
-import { calculatePositionMetrics, DEFAULT_CONFIG } from './engine/exit_rules.js';
+(function () {
+  "use strict";
 
-let appState = {
-  positions: [],
-  closedTrades: [],
-  config: { ...DEFAULT_CONFIG },
-  activeTab: 'open'
-};
+  // Elements
+  const tabButtons = document.querySelectorAll(".tab-btn");
+  const tabContents = document.querySelectorAll(".tab-content");
 
-document.addEventListener('DOMContentLoaded', async () => {
-  setupTabs();
-  setupActionButtons();
-  setupSettingsForm();
-  await refreshState();
-  setInterval(refreshState, 2000);
-});
+  // Summary Stat Counters
+  const statTotalScanned = document.getElementById("stat-total-scanned");
+  const statStinkyCaught = document.getElementById("stat-stinky-caught");
+  const statAvgStinkiness = document.getElementById("stat-avg-stinkiness");
 
-async function refreshState() {
-  try {
-    chrome.runtime.sendMessage({ type: 'GET_STATE' }, (res) => {
-      if (chrome.runtime.lastError || !res || !res.success) return;
-      appState.positions = res.positions || [];
-      appState.closedTrades = res.closedTrades || [];
-      appState.config = res.config || DEFAULT_CONFIG;
+  // Manual Tester Elements
+  const manualAuthor = document.getElementById("manual-author");
+  const manualText = document.getElementById("manual-text");
+  const btnManualScore = document.getElementById("btn-manual-score");
+  const manualResult = document.getElementById("manual-result");
+  const manualScoreGauge = document.getElementById("manual-score-gauge");
+  const manualVerdict = document.getElementById("manual-verdict");
+  const manualBrandCallout = document.getElementById("manual-brand-callout");
+  const manualSignalsList = document.getElementById("manual-signals-list");
+  const manualAnswerPreview = document.getElementById("manual-answer-preview");
+  const btnCopyManualAnswer = document.getElementById("btn-copy-manual-answer");
 
-      renderCounts();
-      if (appState.activeTab === 'open') {
-        renderPositions();
-      } else if (appState.activeTab === 'history') {
-        renderHistory();
+  // Feed Elements
+  const feedList = document.getElementById("feed-list");
+  const btnRefreshFeed = document.getElementById("btn-refresh-feed");
+
+  // Settings Elements
+  const settingAutoscan = document.getElementById("setting-autoscan");
+  const settingFirewall = document.getElementById("setting-firewall");
+  const settingThreshold = document.getElementById("setting-threshold");
+  const thresholdVal = document.getElementById("threshold-val");
+  const settingStyle = document.getElementById("setting-style");
+  const settingProxyUrl = document.getElementById("setting-proxy-url");
+  const settingTypesafeKey = document.getElementById("setting-typesafe-key");
+  const btnSaveSettings = document.getElementById("btn-save-settings");
+  const btnTestConnection = document.getElementById("btn-test-connection");
+  const btnClearCache = document.getElementById("btn-clear-cache");
+  const connectionStatusPill = document.getElementById("connection-status-pill");
+  const popupToast = document.getElementById("popup-toast");
+
+  let currentManualScored = null;
+
+  // Initialize
+  document.addEventListener("DOMContentLoaded", () => {
+    setupTabs();
+    setupThresholdSlider();
+    setupActions();
+    loadDashboardState();
+    checkConnectionStatus();
+  });
+
+  /**
+   * Tab Navigation Setup
+   */
+  function setupTabs() {
+    tabButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const targetId = btn.dataset.tab;
+
+        tabButtons.forEach((b) => b.classList.remove("active"));
+        tabContents.forEach((c) => c.classList.remove("active"));
+
+        btn.classList.add("active");
+        const targetContent = document.getElementById(targetId);
+        if (targetContent) {
+          targetContent.classList.add("active");
+        }
+      });
+    });
+  }
+
+  /**
+   * Threshold Slider Live Display
+   */
+  function setupThresholdSlider() {
+    settingThreshold.addEventListener("input", () => {
+      thresholdVal.textContent = `${settingThreshold.value}%`;
+    });
+  }
+
+  /**
+   * Wire up event listeners
+   */
+  function setupActions() {
+    // Manual Score Button
+    btnManualScore.addEventListener("click", handleManualScore);
+
+    // Copy Manual Answer
+    btnCopyManualAnswer.addEventListener("click", () => {
+      if (manualAnswerPreview.textContent) {
+        copyText(manualAnswerPreview.textContent);
+        showToast("Auto-Answer copied to clipboard!");
       }
     });
-  } catch (e) {
-    // Context invalidated
-  }
-}
 
-function setupTabs() {
-  const tabs = document.querySelectorAll('.tab-btn');
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-
-      tab.classList.add('active');
-      const target = tab.dataset.tab;
-      appState.activeTab = target;
-      document.getElementById(`tab-${target}`).classList.add('active');
-
-      if (target === 'open') renderPositions();
-      if (target === 'history') renderHistory();
-      if (target === 'settings') populateSettingsForm();
+    // Refresh Feed
+    btnRefreshFeed.addEventListener("click", () => {
+      btnRefreshFeed.textContent = "⏳";
+      loadDashboardState(() => {
+        btnRefreshFeed.textContent = "🔄";
+      });
     });
-  });
-}
 
-function renderCounts() {
-  document.getElementById('count-open').textContent = appState.positions.length;
-  document.getElementById('count-closed').textContent = appState.closedTrades.length;
-}
+    // Save Settings
+    btnSaveSettings.addEventListener("click", handleSaveSettings);
 
-function renderPositions() {
-  const container = document.getElementById('positions-list');
-  const now = Date.now();
+    // Test Connection
+    btnTestConnection.addEventListener("click", checkConnectionStatus);
 
-  if (appState.positions.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        No open positions being monitored.<br>
-        Navigate to a coin on <b>pump.fun</b> and click <i>+ Track Current Pump.fun Tab</i>.
-      </div>
-    `;
-    return;
+    // Clear Cache
+    btnClearCache.addEventListener("click", handleClearCache);
   }
 
-  container.innerHTML = appState.positions.map(pos => {
-    const metrics = calculatePositionMetrics(pos, pos.lastPrice, appState.config);
-    const ageMin = (now - (pos.openedAtMs || now)) / 60_000;
+  /**
+   * Load dashboard stats, settings, and recent feed
+   */
+  function loadDashboardState(callback) {
+    chrome.runtime.sendMessage({ action: "GET_STATE" }, (res) => {
+      if (res && res.success) {
+        const stats = res.stats || {};
+        const settings = res.settings || {};
 
-    const multClass = metrics.multiple >= 1.0 ? 'text-green' : 'text-red';
-    const multStr = `${metrics.multiple.toFixed(2)}x`;
-    const pnlStr = `${metrics.pnlPct >= 0 ? '+' : ''}${metrics.pnlPct.toFixed(1)}%`;
-    const peakStr = `${metrics.peakMultiple.toFixed(2)}x`;
+        // Update Stats
+        statTotalScanned.textContent = stats.totalScanned || 0;
+        statStinkyCaught.textContent = stats.stinkyCount || 0;
+        statAvgStinkiness.textContent = `${stats.avgStinkiness || 0}%`;
 
-    const armed = metrics.armed;
-    const badgeHtml = armed
-      ? `<span class="badge-status badge-armed">ARMED</span>`
-      : `<span class="badge-status badge-unarmed">UNARMED</span>`;
+        // Update Settings Form
+        settingAutoscan.checked = Boolean(settings.autoScanViewport);
+        settingFirewall.value = settings.firewallMode || "xray";
+        settingThreshold.value = settings.stinkinessThreshold || 75;
+        thresholdVal.textContent = `${settingThreshold.value}%`;
+        settingStyle.value = settings.replyStyle || "full";
+        settingProxyUrl.value = settings.proxyUrl || "";
+        settingTypesafeKey.value = settings.typesafeApiKey || "";
 
-    // Time countdowns
-    let timeStopInfo = '';
-    if (!armed) {
-      const minLeft = Math.max(0, appState.config.unarmedTimeStopMin - ageMin);
-      timeStopInfo = `Unarmed stop in ${minLeft.toFixed(0)}m`;
-    } else {
-      const maxLeft = Math.max(0, appState.config.maxHoldMin - ageMin);
-      timeStopInfo = `Max hold in ${Math.floor(maxLeft / 60)}h ${(maxLeft % 60).toFixed(0)}m`;
+        // Render Recent Feed
+        renderFeedList(stats.recentVerdicts || [], settings.replyStyle);
+      }
+
+      if (callback) callback();
+    });
+  }
+
+  /**
+   * Render Recent Scored Posts
+   */
+  function renderFeedList(items, replyStyle) {
+    if (!items || items.length === 0) {
+      feedList.innerHTML = `
+        <div class="empty-state">
+          <span class="empty-icon">📭</span>
+          <p>No tweets scored yet. Browse X.com or use the tester above!</p>
+        </div>
+      `;
+      return;
     }
 
-    const trailInfo = armed
-      ? `Stop at <b>${metrics.trailStopMultiple.toFixed(2)}x</b> (-${appState.config.trailPct}%)`
-      : `Arms at <b>${appState.config.trailArmX.toFixed(2)}x</b> (needs +${Math.max(0, (appState.config.trailArmX - metrics.multiple) / metrics.multiple * 100).toFixed(0)}%)`;
+    feedList.innerHTML = "";
+    items.forEach((item) => {
+      const feedItem = document.createElement("div");
+      feedItem.className = "feed-item";
 
-    return `
-      <div class="pos-card ${armed ? 'armed-card' : 'unarmed-card'}" data-mint="${pos.mint}">
-        <div class="pos-header">
+      const pct = item.stinkinessPct ?? 50;
+      let badgeClass = "badge-clean";
+      let badgeLabel = "Clean";
+      let badgeIcon = "✅";
+
+      if (pct >= 75) {
+        badgeClass = "badge-stinky";
+        badgeLabel = "Stinky";
+        badgeIcon = "💩";
+      } else if (pct >= 40) {
+        badgeClass = "badge-sus";
+        badgeLabel = "Sus";
+        badgeIcon = "🤨";
+      }
+
+      const replyText = replyStyle === "compact"
+        ? (item.autoAnswerCompact || item.autoAnswerText)
+        : (item.autoAnswerText || item.autoAnswerCompact);
+
+      feedItem.innerHTML = `
+        <div class="feed-item-header">
           <div>
-            <span class="pos-symbol">${escapeHtml(pos.symbol || 'COIN')}</span>
-            <span class="pos-mint">${pos.mint.slice(0, 4)}...${pos.mint.slice(-4)}</span>
-            ${badgeHtml}
+            <span class="feed-item-author">${escapeHtml(item.author || "Unknown")}</span>
+            <span class="feed-item-handle">${escapeHtml(item.handle || "")}</span>
           </div>
-          <div class="pos-multiple ${multClass}">
-            ${multStr} <span style="font-size: 11px; font-weight: normal;">(${pnlStr})</span>
+          <span class="feed-item-badge ${badgeClass}">
+            ${badgeIcon} ${pct}% ${badgeLabel}
+          </span>
+        </div>
+        <div class="feed-item-snippet">${escapeHtml(item.textSnippet || "No text")}</div>
+        <div class="feed-item-actions">
+          <span class="feed-item-time">${formatTimeAgo(item.evaluatedAt)}</span>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-secondary btn-sm btn-copy-feed" title="Copy Auto-Answer">
+              <span>📋</span> Copy Reply
+            </button>
+            ${item.url ? `<a href="${item.url}" target="_blank" class="btn btn-secondary btn-sm" title="Open on X">↗ Open</a>` : ""}
           </div>
         </div>
+      `;
 
-        <div class="pos-details-grid">
-          <div class="detail-item">
-            <span class="detail-label">Peak:</span>
-            <span class="detail-val text-bright">${peakStr}</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">Entry:</span>
-            <span class="detail-val">${formatPrice(pos.entryPrice)}</span>
-          </div>
-          <div class="detail-item" style="grid-column: span 2;">
-            <span class="detail-label">Exit Rule:</span>
-            <span class="detail-val">${trailInfo}</span>
-          </div>
-          <div class="detail-item" style="grid-column: span 2;">
-            <span class="detail-label">Time Stop:</span>
-            <span class="detail-val ${!armed && (appState.config.unarmedTimeStopMin - ageMin) < 15 ? 'text-amber' : ''}">${timeStopInfo}</span>
-          </div>
-        </div>
-
-        <div class="pos-actions">
-          <button class="btn btn-secondary btn-remove" data-mint="${pos.mint}">Untrack</button>
-          <button class="btn btn-danger btn-panic" data-mint="${pos.mint}" data-symbol="${escapeHtml(pos.symbol || 'COIN')}">Panic Sell Now</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  // Attach card action listeners
-  container.querySelectorAll('.btn-panic').forEach(btn => {
-    btn.onclick = () => {
-      const mint = btn.dataset.mint;
-      const symbol = btn.dataset.symbol;
-      if (confirm(`PANIC SELL 100% of ${symbol}? This sends an immediate exit instruction to pump.fun.`)) {
-        chrome.runtime.sendMessage({ type: 'PANIC_SELL', payload: { mint } }, () => {
-          refreshState();
-        });
-      }
-    };
-  });
-
-  container.querySelectorAll('.btn-remove').forEach(btn => {
-    btn.onclick = () => {
-      const mint = btn.dataset.mint;
-      chrome.runtime.sendMessage({ type: 'REMOVE_POSITION', payload: { mint } }, () => {
-        refreshState();
+      feedItem.querySelector(".btn-copy-feed").addEventListener("click", () => {
+        if (replyText) {
+          copyText(replyText);
+          showToast("Auto-Answer copied!");
+        }
       });
-    };
-  });
-}
 
-function renderHistory() {
-  const container = document.getElementById('history-list');
-  if (appState.closedTrades.length === 0) {
-    container.innerHTML = `<div class="empty-state">No closed trades recorded yet.</div>`;
-    return;
+      feedList.appendChild(feedItem);
+    });
   }
 
-  container.innerHTML = appState.closedTrades.map(trade => {
-    const mult = trade.exitMultiple ? `${trade.exitMultiple.toFixed(2)}x` : '1.00x';
-    const multClass = (trade.exitMultiple || 1.0) >= 1.0 ? 'text-green' : 'text-red';
-    const dateStr = trade.closedAtMs ? new Date(trade.closedAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-
-    return `
-      <div class="history-card">
-        <div>
-          <div style="font-weight: bold; color: #f0f6fc;">${escapeHtml(trade.symbol || 'COIN')} <span class="${multClass}">(${mult})</span></div>
-          <div class="history-reason">${escapeHtml(trade.exitReason || 'closed')} • ${dateStr}</div>
-        </div>
-        <div style="font-size: 10px; color: #8b949e; text-align: right;">
-          Peak: ${trade.peakPrice ? (trade.peakPrice / trade.entryPrice).toFixed(2) + 'x' : 'N/A'}<br>
-          Mint: ${trade.mint.slice(0, 4)}...${trade.mint.slice(-4)}
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function setupActionButtons() {
-  // Track active tab button
-  document.getElementById('btn-track-active').onclick = async () => {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tabs || tabs.length === 0) return;
-
-    const currentTab = tabs[0];
-    const url = currentTab.url || '';
-
-    if (!url.includes('pump.fun')) {
-      alert('Active tab is not on pump.fun! Open a pump.fun coin page first.');
+  /**
+   * Handle Manual Scoring Flow
+   */
+  function handleManualScore() {
+    const text = manualText.value.trim();
+    if (!text) {
+      showToast("Please enter tweet text to score.");
+      manualText.focus();
       return;
     }
 
-    const match = url.match(/\/(?:coin\/)?([1-9A-HJ-NP-Za-km-z]{32,44})/);
-    if (!match) {
-      alert('Could not find a valid Solana token mint in current pump.fun URL.');
-      return;
-    }
+    const author = manualAuthor.value.trim() || "@claim_tester";
+    btnManualScore.disabled = true;
+    btnManualScore.innerHTML = `<span>⏳</span> Scoring with Jev...`;
 
-    const mint = match[1];
-    // Fetch coin info
-    try {
-      const res = await fetch(`https://frontend-api.pump.fun/coins/${mint}`);
-      if (res.ok) {
-        const coin = await res.json();
-        const price = parseFloat(coin.usd_market_cap || coin.market_cap || 1);
-        const symbol = coin.symbol || 'COIN';
+    chrome.runtime.sendMessage(
+      {
+        action: "SCORE_SINGLE_TEXT",
+        text,
+        author,
+        handle: author.startsWith("@") ? author : `@${author}`
+      },
+      (res) => {
+        btnManualScore.disabled = false;
+        btnManualScore.innerHTML = `<span>💩</span> Score Claim with Jev`;
 
-        chrome.runtime.sendMessage({
-          type: 'ADD_POSITION',
-          payload: {
-            mint,
-            symbol,
-            entryPrice: price,
-            openedAtMs: Date.now()
-          }
-        }, () => {
-          refreshState();
-        });
-        return;
-      }
-    } catch (e) {
-      // Fallback manual entry
-    }
-
-    // Prompt for entry price if API unavailable
-    const priceStr = prompt(`Tracking mint: ${mint}\nEnter estimated entry market cap or price in USD:`, '50000');
-    if (priceStr && !isNaN(parseFloat(priceStr))) {
-      chrome.runtime.sendMessage({
-        type: 'ADD_POSITION',
-        payload: {
-          mint,
-          symbol: `${mint.slice(0, 4)}...${mint.slice(-4)}`,
-          entryPrice: parseFloat(priceStr),
-          openedAtMs: Date.now()
+        if (!res || !res.success || !res.scored) {
+          showToast(`Error: ${res?.error || "Failed to score claim"}`);
+          return;
         }
-      }, () => {
-        refreshState();
-      });
-    }
-  };
 
-  // Toggle manual entry form
-  const toggleBtn = document.getElementById('btn-toggle-manual');
-  const manualForm = document.getElementById('manual-form');
-  toggleBtn.onclick = () => {
-    manualForm.classList.toggle('hidden');
-  };
-
-  // Submit manual position
-  document.getElementById('btn-submit-manual').onclick = () => {
-    const mint = document.getElementById('manual-mint').value.trim();
-    const symbol = document.getElementById('manual-symbol').value.trim() || 'COIN';
-    const price = parseFloat(document.getElementById('manual-price').value);
-
-    if (!mint || isNaN(price) || price <= 0) {
-      alert('Please provide a valid mint address and positive entry price/mcap.');
-      return;
-    }
-
-    chrome.runtime.sendMessage({
-      type: 'ADD_POSITION',
-      payload: {
-        mint,
-        symbol,
-        entryPrice: price,
-        openedAtMs: Date.now()
+        currentManualScored = res.scored;
+        displayManualResult(res.scored);
+        loadDashboardState();
       }
-    }, (res) => {
-      if (res && res.success) {
-        document.getElementById('manual-mint').value = '';
-        document.getElementById('manual-symbol').value = '';
-        document.getElementById('manual-price').value = '';
-        manualForm.classList.add('hidden');
-        refreshState();
-      } else {
-        alert('Failed to add position: ' + (res?.error || 'Unknown error'));
-      }
-    });
-  };
+    );
+  }
 
-  // Poll now button
-  document.getElementById('btn-poll-now').onclick = () => {
-    chrome.runtime.sendMessage({ type: 'POLL_NOW' }, () => {
-      refreshState();
-    });
-  };
-}
+  /**
+   * Render Manual Scoring Result
+   */
+  function displayManualResult(scored) {
+    manualResult.classList.remove("hidden");
 
-function setupSettingsForm() {
-  document.getElementById('btn-save-settings').onclick = () => {
-    const newConfig = {
-      trailArmX: parseFloat(document.getElementById('cfg-arm-x').value) || DEFAULT_CONFIG.trailArmX,
-      trailPct: parseFloat(document.getElementById('cfg-trail-pct').value) || DEFAULT_CONFIG.trailPct,
-      trailConfirm: parseInt(document.getElementById('cfg-trail-confirm').value, 10) || DEFAULT_CONFIG.trailConfirm,
-      unarmedTimeStopMin: parseFloat(document.getElementById('cfg-unarmed-time').value) || DEFAULT_CONFIG.unarmedTimeStopMin,
-      maxHoldMin: parseFloat(document.getElementById('cfg-max-hold').value) || DEFAULT_CONFIG.maxHoldMin,
-      checkIntervalSec: parseInt(document.getElementById('cfg-poll-sec').value, 10) || DEFAULT_CONFIG.checkIntervalSec
+    const pct = scored.stinkinessPct ?? 50;
+    manualScoreGauge.textContent = `${pct}%`;
+
+    let scoreColor = "var(--color-primary)";
+    if (pct < 40) scoreColor = "var(--color-green)";
+    else if (pct < 75) scoreColor = "var(--color-amber)";
+
+    manualScoreGauge.style.color = scoreColor;
+    manualVerdict.textContent = scored.verdictLabel || "Analysis Complete";
+    manualBrandCallout.textContent = `rated ${pct}% on stinkiness by bullshtt.ai`;
+
+    // Render Signals
+    const signals = scored.signals || {};
+    const sigItems = [
+      { name: "Implausible Claim", val: signals.implausible_claim ?? 0 },
+      { name: "Incoherent Mechanism", val: signals.incoherent_mechanism ?? 0 },
+      { name: "Zero Evidence", val: signals.zero_verifiable_evidence ?? 0 },
+      { name: "Engagement DM Gate", val: signals.engagement_farming_gate ?? 0 },
+      { name: "Manufactured Rage", val: signals.manufactured_rage_bait ?? 0 }
+    ];
+
+    manualSignalsList.innerHTML = sigItems
+      .map((s) => {
+        const valPct = Math.min(100, Math.max(0, Math.round(s.val > 1 ? s.val : s.val * 100)));
+        let color = "var(--color-green)";
+        if (valPct >= 70) color = "var(--color-primary)";
+        else if (valPct >= 40) color = "var(--color-amber)";
+
+        return `
+          <div class="sig-row">
+            <span>${s.name}</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div class="sig-track">
+                <div class="sig-bar" style="width: ${valPct}%; background: ${color};"></div>
+              </div>
+              <span style="font-family: var(--font-mono);">${valPct}%</span>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    const answer = settingStyle.value === "compact"
+      ? (scored.autoAnswerCompact || scored.autoAnswerText)
+      : (scored.autoAnswerText || scored.autoAnswerCompact);
+
+    manualAnswerPreview.textContent = answer || "";
+  }
+
+  /**
+   * Save Settings
+   */
+  function handleSaveSettings() {
+    const newSettings = {
+      autoScanViewport: settingAutoscan.checked,
+      firewallMode: settingFirewall.value,
+      stinkinessThreshold: parseInt(settingThreshold.value, 10),
+      replyStyle: settingStyle.value,
+      proxyUrl: settingProxyUrl.value.trim(),
+      typesafeApiKey: settingTypesafeKey.value.trim()
     };
 
-    chrome.runtime.sendMessage({ type: 'UPDATE_CONFIG', payload: { config: newConfig } }, (res) => {
+    btnSaveSettings.disabled = true;
+    btnSaveSettings.textContent = "Saving...";
+
+    chrome.runtime.sendMessage({ action: "UPDATE_SETTINGS", settings: newSettings }, (res) => {
+      btnSaveSettings.disabled = false;
+      btnSaveSettings.innerHTML = `<span>💾</span> Save Settings`;
+
       if (res && res.success) {
-        alert('Settings saved successfully!');
-        appState.config = res.config;
+        showToast("Settings saved successfully!");
+        checkConnectionStatus();
+      } else {
+        showToast("Error saving settings.");
       }
     });
-  };
+  }
 
-  document.getElementById('btn-reset-settings').onclick = () => {
-    if (confirm('Reset all exit configuration parameters to default values?')) {
-      chrome.runtime.sendMessage({ type: 'RESET_CONFIG' }, (res) => {
+  /**
+   * Check connection status to proxy and direct Jev
+   */
+  function checkConnectionStatus() {
+    connectionStatusPill.className = "status-pill status-pill-neutral";
+    connectionStatusPill.textContent = "Testing...";
+
+    chrome.runtime.sendMessage({ action: "TEST_CONNECTION" }, (res) => {
+      if (res && res.proxyOk) {
+        connectionStatusPill.className = "status-pill status-pill-ok";
+        connectionStatusPill.textContent = "Proxy Online ✅";
+      } else if (res && res.jevOk) {
+        connectionStatusPill.className = "status-pill status-pill-ok";
+        connectionStatusPill.textContent = "Direct Jev Online ⚡";
+      } else {
+        connectionStatusPill.className = "status-pill status-pill-fail";
+        connectionStatusPill.textContent = "Disconnected ❌";
+      }
+    });
+  }
+
+  /**
+   * Clear local cache
+   */
+  function handleClearCache() {
+    if (confirm("Are you sure you want to clear the local scored tweet cache?")) {
+      chrome.runtime.sendMessage({ action: "CLEAR_CACHE" }, (res) => {
         if (res && res.success) {
-          appState.config = res.config;
-          populateSettingsForm();
+          showToast("Local cache cleared!");
+          loadDashboardState();
         }
       });
     }
-  };
-}
+  }
 
-function populateSettingsForm() {
-  const cfg = appState.config || DEFAULT_CONFIG;
-  document.getElementById('cfg-arm-x').value = cfg.trailArmX;
-  document.getElementById('cfg-trail-pct').value = cfg.trailPct;
-  document.getElementById('cfg-trail-confirm').value = cfg.trailConfirm;
-  document.getElementById('cfg-unarmed-time').value = cfg.unarmedTimeStopMin;
-  document.getElementById('cfg-max-hold').value = cfg.maxHoldMin;
-  document.getElementById('cfg-poll-sec').value = cfg.checkIntervalSec;
-}
+  /**
+   * Copy helper
+   */
+  function copyText(text) {
+    navigator.clipboard.writeText(text).catch(() => {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    });
+  }
 
-function formatPrice(val) {
-  if (val === null || val === undefined) return 'N/A';
-  if (val >= 1_000_000) return `$${(val / 1_000_000).toFixed(2)}M`;
-  if (val >= 1_000) return `$${(val / 1_000).toFixed(1)}K`;
-  if (val >= 1) return `$${val.toFixed(2)}`;
-  return `$${val.toFixed(6)}`;
-}
+  /**
+   * Toast helper
+   */
+  function showToast(msg) {
+    popupToast.textContent = msg;
+    popupToast.classList.add("visible");
+    clearTimeout(popupToast.__timer);
+    popupToast.__timer = setTimeout(() => {
+      popupToast.classList.remove("visible");
+    }, 2500);
+  }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+  function escapeHtml(str) {
+    return (str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function formatTimeAgo(isoString) {
+    if (!isoString) return "";
+    const sec = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
+    if (sec < 60) return "Just now";
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    return `${Math.floor(hr / 24)}d ago`;
+  }
+})();

@@ -2,154 +2,200 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>EXECUTER</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>bullshtt.ai</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="app-container">
-    <!-- Header -->
-    <header class="header">
+    <!-- Top Header -->
+    <header class="app-header">
       <div class="brand">
-        <div class="logo">🛡️</div>
-        <div>
-          <div class="title">EXECUTER</div>
-          <div class="subtitle">pump.fun Exit Guardian • Combo 2+4</div>
+        <span class="brand-icon">💩</span>
+        <div class="brand-info">
+          <h1 class="brand-title">bullshtt.ai</h1>
+          <span class="brand-subtitle">X.com BS Scorer & Auto-Answer</span>
         </div>
       </div>
-      <div class="status-indicator">
-        <span class="pulse-dot"></span>
-        <span class="status-text" id="status-text">ACTIVE</span>
-      </div>
+      <div class="version-tag">v1.0.0</div>
     </header>
 
-    <!-- Quick Action Bar -->
-    <div class="action-bar">
-      <button id="btn-track-active" class="btn btn-primary">
-        + Track Current Pump.fun Tab
-      </button>
-      <button id="btn-toggle-manual" class="btn btn-secondary">
-        + Manual Mint
-      </button>
-      <button id="btn-poll-now" class="btn btn-icon" title="Refresh prices now">
-        ↻
-      </button>
-    </div>
-
-    <!-- Manual Add Form (Collapsible) -->
-    <div id="manual-form" class="manual-form hidden">
-      <div class="form-row">
-        <input type="text" id="manual-mint" placeholder="Solana Mint Address..." class="input-text">
+    <!-- Top Telemetry Summary Bar -->
+    <section class="summary-bar">
+      <div class="stat-card">
+        <span class="stat-label">TOTAL SCANNED</span>
+        <span class="stat-value" id="stat-total-scanned">0</span>
       </div>
-      <div class="form-row flex-gap">
-        <input type="text" id="manual-symbol" placeholder="Symbol (e.g. PEPE)" class="input-text flex-1">
-        <input type="number" id="manual-price" placeholder="Entry Price / Mcap" step="any" class="input-text flex-1">
-        <button id="btn-submit-manual" class="btn btn-primary">Track</button>
+      <div class="stat-card stat-card-alert">
+        <span class="stat-label">STINKY CAUGHT</span>
+        <span class="stat-value" id="stat-stinky-caught">0</span>
       </div>
-    </div>
+      <div class="stat-card">
+        <span class="stat-label">AVG STINKINESS</span>
+        <span class="stat-value" id="stat-avg-stinkiness">0%</span>
+      </div>
+    </section>
 
     <!-- Navigation Tabs -->
-    <div class="nav-tabs">
-      <button class="tab-btn active" data-tab="open">Open Positions (<span id="count-open">0</span>)</button>
-      <button class="tab-btn" data-tab="history">Closed History (<span id="count-closed">0</span>)</button>
-      <button class="tab-btn" data-tab="settings">Config ⚙</button>
-    </div>
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="tab-feed">
+        <span>⚡</span> Feed &amp; Tester
+      </button>
+      <button class="tab-btn" data-tab="tab-settings">
+        <span>⚙️</span> Settings &amp; Connection
+      </button>
+    </nav>
 
-    <!-- Tab 1: Open Positions -->
-    <main id="tab-open" class="tab-content active">
-      <div id="positions-list" class="positions-list">
-        <div class="empty-state">No open positions. Track a pump.fun coin above or click buy on pump.fun.</div>
-      </div>
+    <!-- Tab 1: Live Feed & Manual Tester -->
+    <main id="tab-feed" class="tab-content active">
+      <!-- Manual Tester Box -->
+      <section class="card tester-card">
+        <div class="card-header">
+          <h2 class="card-title">🧪 Manual Tweet BS Tester</h2>
+          <span class="tag tag-jev">jev-1.14.0</span>
+        </div>
+        <div class="form-group">
+          <input type="text" id="manual-author" placeholder="Tweet Author (e.g. @tech_guru)" class="input-text">
+        </div>
+        <div class="form-group">
+          <textarea id="manual-text" placeholder="Paste any tweet or claim text here to test with Jev..." rows="3" class="input-textarea"></textarea>
+        </div>
+        <button id="btn-manual-score" class="btn btn-primary btn-full">
+          <span>💩</span> Score Claim with Jev
+        </button>
+
+        <!-- Manual Result Container -->
+        <div id="manual-result" class="result-box hidden">
+          <div class="result-header">
+            <div class="result-score-gauge" id="manual-score-gauge">89%</div>
+            <div class="result-meta">
+              <div class="result-verdict" id="manual-verdict">Engagement-Bait Slop</div>
+              <div class="result-brand-callout" id="manual-brand-callout">rated 89% on stinkiness by bullshtt.ai</div>
+            </div>
+          </div>
+
+          <div class="signals-compact" id="manual-signals-list">
+            <!-- Dynamically populated signal progress bars -->
+          </div>
+
+          <div class="auto-answer-box">
+            <div class="auto-answer-label">AUTO-ANSWER TEXT:</div>
+            <div class="auto-answer-text" id="manual-answer-preview"></div>
+            <button id="btn-copy-manual-answer" class="btn btn-secondary btn-sm">
+              <span>📋</span> Copy Auto-Answer
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Recent Scored Tweets Feed -->
+      <section class="card feed-card">
+        <div class="card-header">
+          <h2 class="card-title">📡 Recently Scored on X.com</h2>
+          <button id="btn-refresh-feed" class="btn-icon" title="Refresh">🔄</button>
+        </div>
+        <div id="feed-list" class="feed-list">
+          <div class="empty-state">
+            <span class="empty-icon">📭</span>
+            <p>No tweets scored yet. Browse X.com or use the tester above!</p>
+          </div>
+        </div>
+      </section>
     </main>
 
-    <!-- Tab 2: Closed History -->
-    <section id="tab-history" class="tab-content">
-      <div id="history-list" class="history-list">
-        <div class="empty-state">No closed trades recorded yet.</div>
-      </div>
-    </section>
+    <!-- Tab 2: Settings & Connection -->
+    <main id="tab-settings" class="tab-content">
+      <section class="card settings-card">
+        <div class="card-header">
+          <h2 class="card-title">⚙️ Extension Preferences</h2>
+        </div>
 
-    <!-- Tab 3: Settings -->
-    <section id="tab-settings" class="tab-content">
-      <div class="settings-card">
-        <div class="settings-header">Exit Engine Configuration (Combo 2 + 4)</div>
-        
-        <div class="form-group">
-          <label for="cfg-arm-x">
-            <span>Trailing Arm Threshold</span>
-            <span class="label-hint">Peak multiple to activate trail (default: 1.3x)</span>
+        <div class="setting-item">
+          <div class="setting-info">
+            <label class="setting-label" for="setting-autoscan">Auto-Scan Viewport</label>
+            <span class="setting-desc">Automatically analyze visible tweets as you scroll X.com</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="setting-autoscan" checked>
+            <span class="toggle-slider"></span>
           </label>
-          <div class="input-affix-wrap">
-            <input type="number" id="cfg-arm-x" step="0.05" min="1.0" class="input-text">
-            <span class="affix">x</span>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <label class="setting-label" for="setting-firewall">Firewall Mode</label>
+            <span class="setting-desc">How to treat posts exceeding the stinkiness threshold</span>
+          </div>
+          <select id="setting-firewall" class="input-select">
+            <option value="xray">X-Ray Badge (Subtle Pill)</option>
+            <option value="collapse">Collapse Stinky Tweets (Shield Banner)</option>
+          </select>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <label class="setting-label" for="setting-threshold">Stinkiness Threshold</label>
+            <span class="setting-desc">Scores at or above this trigger alert/collapse</span>
+          </div>
+          <div class="slider-wrapper">
+            <input type="range" id="setting-threshold" min="50" max="95" value="75" class="input-range">
+            <span id="threshold-val" class="slider-val">75%</span>
           </div>
         </div>
 
-        <div class="form-group">
-          <label for="cfg-trail-pct">
-            <span>Trailing Stop Drop</span>
-            <span class="label-hint">Pullback from peak to trigger sell (default: 25%)</span>
-          </label>
-          <div class="input-affix-wrap">
-            <input type="number" id="cfg-trail-pct" step="1" min="1" max="90" class="input-text">
-            <span class="affix">%</span>
+        <div class="setting-item">
+          <div class="setting-info">
+            <label class="setting-label" for="setting-style">Auto-Answer Reply Style</label>
+            <span class="setting-desc">Format of the objective reply callout</span>
           </div>
+          <select id="setting-style" class="input-select">
+            <option value="full">Full Telemetry Breakdown</option>
+            <option value="compact">Compact One-Liner</option>
+          </select>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="card-header">
+          <h2 class="card-title">🔌 Connection &amp; API</h2>
+          <span id="connection-status-pill" class="status-pill status-pill-neutral">Checking...</span>
         </div>
 
         <div class="form-group">
-          <label for="cfg-trail-confirm">
-            <span>Confirmation Checks</span>
-            <span class="label-hint">Consecutive checks below stop line (default: 2)</span>
-          </label>
-          <input type="number" id="cfg-trail-confirm" step="1" min="1" max="10" class="input-text">
+          <label class="form-label" for="setting-proxy-url">bullshtt.ai Proxy Endpoint</label>
+          <input type="text" id="setting-proxy-url" class="input-text" placeholder="http://127.0.0.1:8787/api/score">
+          <span class="form-hint">Local Cloudflare Worker or remote backend proxy.</span>
         </div>
 
         <div class="form-group">
-          <label for="cfg-unarmed-time">
-            <span>Unarmed Time Stop</span>
-            <span class="label-hint">Auto-sell if never reached 1.3x (default: 60 min)</span>
-          </label>
-          <div class="input-affix-wrap">
-            <input type="number" id="cfg-unarmed-time" step="5" min="5" class="input-text">
-            <span class="affix">min</span>
-          </div>
+          <label class="form-label" for="setting-typesafe-key">TypeSafe API Key (Local Fallback)</label>
+          <input type="password" id="setting-typesafe-key" class="input-text" placeholder="ts_live_...">
+          <span class="form-hint">Used directly if the proxy is unreachable. Calls <code>jev-1.14.0</code>.</span>
         </div>
 
-        <div class="form-group">
-          <label for="cfg-max-hold">
-            <span>Max Hold Time Stop</span>
-            <span class="label-hint">Hard backstop duration (default: 240 min / 4h)</span>
-          </label>
-          <div class="input-affix-wrap">
-            <input type="number" id="cfg-max-hold" step="10" min="10" class="input-text">
-            <span class="affix">min</span>
-          </div>
+        <div class="actions-row">
+          <button id="btn-test-connection" class="btn btn-secondary">
+            <span>⚡</span> Test Connection
+          </button>
+          <button id="btn-save-settings" class="btn btn-primary">
+            <span>💾</span> Save Settings
+          </button>
         </div>
 
-        <div class="form-group">
-          <label for="cfg-poll-sec">
-            <span>Price Poll Interval</span>
-            <span class="label-hint">How often background checks prices (default: 10s)</span>
-          </label>
-          <div class="input-affix-wrap">
-            <input type="number" id="cfg-poll-sec" step="1" min="3" max="60" class="input-text">
-            <span class="affix">sec</span>
-          </div>
-        </div>
+        <div class="divider"></div>
 
-        <div class="settings-actions">
-          <button id="btn-save-settings" class="btn btn-primary">Save Config</button>
-          <button id="btn-reset-settings" class="btn btn-secondary">Reset Defaults</button>
+        <div class="actions-row">
+          <button id="btn-clear-cache" class="btn btn-danger btn-sm">
+            <span>🗑️</span> Clear Stored Cache
+          </button>
         </div>
-      </div>
-    </section>
+      </section>
+    </main>
 
-    <!-- Footer -->
-    <footer class="footer">
-      <div class="footer-left">Unknown price is never zero guard: <span class="text-green">ENABLED</span></div>
-      <div class="footer-right">v0.1.0</div>
-    </footer>
+    <!-- Footer Toast -->
+    <div id="popup-toast" class="popup-toast"></div>
   </div>
 
-  <script type="module" src="popup.js"></script>
+  <script src="popup.js"></script>
 </body>
 </html>

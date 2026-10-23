@@ -1,19 +1,26 @@
 {
   "name": "jevchrome",
   "version": "0.1.0",
-  "description": "EXECUTER: Ultra-MVP pump.fun automated trade closer & exit guardian",
+  "description": "bullshtt.ai (Jevchrome) - Real-time BS & Rage-Bait Scorer and Auto-Answer Chrome Extension for X.com powered by TypeSafe Jev",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/exit_rules.test.mjs"
+    "test": "node --test tests/bs_scorer.test.mjs",
+    "test:all": "node --test tests/*.test.mjs",
+    "start": "node server/proxy.mjs",
+    "server": "node server/proxy.mjs",
+    "package": "node scripts/package-extension.mjs",
+    "build": "node scripts/package-extension.mjs"
   },
   "keywords": [
-    "pump.fun",
-    "solana",
-    "trading",
-    "trailing-stop",
-    "time-stop",
+    "bullshtt.ai",
+    "typesafe",
+    "system-one",
+    "jev",
     "chrome-extension",
-    "executer"
+    "fact-check",
+    "rage-bait",
+    "hustle-slop",
+    "twitter-firewall"
   ],
   "author": "TrivelaAS",
   "license": "MIT"

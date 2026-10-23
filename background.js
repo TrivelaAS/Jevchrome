@@ -1,365 +1,444 @@
 /**
- * EXECUTER Background Service Worker
- * Manages position polling, exit rules evaluation, storage persistence,
- * and dispatching auto-sell triggers to pump.fun content scripts.
+ * bullshtt.ai — Background Service Worker (Manifest V3)
+ * Real-time X.com bullshit & rage-bait scorer + auto-answer orchestrator powered by Jev.
  */
 
-import { evaluateExit, DEFAULT_CONFIG } from './engine/exit_rules.js';
+import {
+  JEV_ENDPOINT,
+  JEV_MODEL,
+  computePostHash,
+  buildJevBatchRequest,
+  scoreBatchFromJev,
+  isCacheEntryFresh,
+  formatAutoAnswer
+} from "./engine/bs_scorer.js";
 
-const STORAGE_KEYS = {
-  POSITIONS: 'executer_positions',
-  CLOSED_TRADES: 'executer_closed_trades',
-  CONFIG: 'executer_config'
+const DEFAULT_SETTINGS = {
+  autoScanViewport: true,
+  firewallMode: "xray", // "xray" | "collapse"
+  stinkinessThreshold: 75, // 1-100
+  replyStyle: "full", // "full" | "compact"
+  proxyUrl: "http://127.0.0.1:8787/api/score",
+  typesafeApiKey: ""
 };
 
-const ALARM_NAME = 'executer_price_poller';
+const DEFAULT_STATS = {
+  totalScanned: 0,
+  stinkyCount: 0,
+  avgStinkiness: 0,
+  recentVerdicts: []
+};
 
-// Initialize storage and alarm on install/startup
+const STORAGE_KEYS = {
+  SETTINGS: "bs_settings",
+  STATS: "bs_stats",
+  CACHE: "bs_cache"
+};
+
+// Initialize default storage on install
 chrome.runtime.onInstalled.addListener(async () => {
-  console.log('[EXECUTER] Extension installed/updated.');
+  console.log("[bullshtt.ai] Service worker installed/updated.");
   const stored = await chrome.storage.local.get([
-    STORAGE_KEYS.POSITIONS,
-    STORAGE_KEYS.CLOSED_TRADES,
-    STORAGE_KEYS.CONFIG
+    STORAGE_KEYS.SETTINGS,
+    STORAGE_KEYS.STATS,
+    STORAGE_KEYS.CACHE
   ]);
 
-  if (!stored[STORAGE_KEYS.POSITIONS]) {
-    await chrome.storage.local.set({ [STORAGE_KEYS.POSITIONS]: [] });
-  }
-  if (!stored[STORAGE_KEYS.CLOSED_TRADES]) {
-    await chrome.storage.local.set({ [STORAGE_KEYS.CLOSED_TRADES]: [] });
-  }
-  if (!stored[STORAGE_KEYS.CONFIG]) {
-    await chrome.storage.local.set({ [STORAGE_KEYS.CONFIG]: DEFAULT_CONFIG });
+  if (!stored[STORAGE_KEYS.SETTINGS]) {
+    await chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: DEFAULT_SETTINGS });
+  } else {
+    // Merge any new default settings
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.SETTINGS]: { ...DEFAULT_SETTINGS, ...stored[STORAGE_KEYS.SETTINGS] }
+    });
   }
 
-  // Setup periodic alarm (Chrome alarms have a 1-minute floor in production, so we pair with interval)
-  chrome.alarms.create(ALARM_NAME, { periodInMinutes: 0.5 });
-  startIntervalPoller();
-});
+  if (!stored[STORAGE_KEYS.STATS]) {
+    await chrome.storage.local.set({ [STORAGE_KEYS.STATS]: DEFAULT_STATS });
+  }
 
-chrome.alarms.onAlarm.addListener(alarm => {
-  if (alarm.name === ALARM_NAME) {
-    pollAllPositions();
+  if (!stored[STORAGE_KEYS.CACHE]) {
+    await chrome.storage.local.set({ [STORAGE_KEYS.CACHE]: {} });
   }
 });
 
-let intervalTimer = null;
-function startIntervalPoller() {
-  if (intervalTimer) clearInterval(intervalTimer);
-  intervalTimer = setInterval(() => {
-    pollAllPositions();
-  }, (DEFAULT_CONFIG.checkIntervalSec || 10) * 1000);
-}
-
-// Ensure poller runs on service worker wakeup
-startIntervalPoller();
-
 /**
- * Robust multi-source price fetcher for Solana / pump.fun tokens.
- * Data quality rule: returns null on failure so evaluateExit treats it as unknown_price.
+ * Retrieve current settings from storage
  */
-async function fetchTokenPrice(mint) {
-  if (!mint || typeof mint !== 'string' || mint.trim() === '') {
-    return null;
-  }
-
-  // 1. Try DexScreener API
-  try {
-    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`, {
-      headers: { 'Accept': 'application/json' }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.pairs && data.pairs.length > 0) {
-        // Find best pair (highest liquidity or pump.fun / raydium)
-        const pair = data.pairs[0];
-        const price = parseFloat(pair.priceUsd);
-        if (!Number.isNaN(price) && price > 0) {
-          return { price, mcap: pair.marketCap || null, source: 'dexscreener' };
-        }
-      }
-    }
-  } catch (err) {
-    console.warn(`[EXECUTER] DexScreener fetch error for ${mint}:`, err);
-  }
-
-  // 2. Try pump.fun frontend API
-  try {
-    const res = await fetch(`https://frontend-api.pump.fun/coins/${mint}`, {
-      headers: { 'Accept': 'application/json' }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data) {
-        const mcap = parseFloat(data.usd_market_cap || data.market_cap);
-        const price = parseFloat(data.price_usd || (mcap ? mcap / 1_000_000_000 : 0));
-        if (!Number.isNaN(price) && price > 0) {
-          return { price, mcap, source: 'pumpfun_api' };
-        }
-      }
-    }
-  } catch (err) {
-    console.warn(`[EXECUTER] pump.fun API fetch error for ${mint}:`, err);
-  }
-
-  // 3. Try Jupiter Price API
-  try {
-    const res = await fetch(`https://api.jup.ag/price/v2?ids=${mint}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.data && data.data[mint]) {
-        const price = parseFloat(data.data[mint].price);
-        if (!Number.isNaN(price) && price > 0) {
-          return { price, mcap: null, source: 'jupiter' };
-        }
-      }
-    }
-  } catch (err) {
-    console.warn(`[EXECUTER] Jupiter fetch error for ${mint}:`, err);
-  }
-
-  return null;
+async function getSettings() {
+  const data = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
+  return { ...DEFAULT_SETTINGS, ...(data[STORAGE_KEYS.SETTINGS] || {}) };
 }
 
 /**
- * Evaluates all open positions and triggers auto-sell on exit conditions.
+ * Retrieve current stats from storage
  */
-async function pollAllPositions() {
-  const data = await chrome.storage.local.get([
-    STORAGE_KEYS.POSITIONS,
-    STORAGE_KEYS.CLOSED_TRADES,
-    STORAGE_KEYS.CONFIG
-  ]);
+async function getStats() {
+  const data = await chrome.storage.local.get(STORAGE_KEYS.STATS);
+  return { ...DEFAULT_STATS, ...(data[STORAGE_KEYS.STATS] || {}) };
+}
 
-  const positions = data[STORAGE_KEYS.POSITIONS] || [];
-  const closedTrades = data[STORAGE_KEYS.CLOSED_TRADES] || [];
-  const config = data[STORAGE_KEYS.CONFIG] || DEFAULT_CONFIG;
+/**
+ * Retrieve cache from storage
+ */
+async function getCache() {
+  const data = await chrome.storage.local.get(STORAGE_KEYS.CACHE);
+  return data[STORAGE_KEYS.CACHE] || {};
+}
 
-  if (positions.length === 0) return;
-
-  const nowMs = Date.now();
-  const updatedPositions = [];
-  const newlyClosed = [];
-
-  for (const pos of positions) {
-    const quote = await fetchTokenPrice(pos.mint);
-    const currentPrice = quote ? quote.price : null;
-
-    const evalResult = evaluateExit(pos, currentPrice, nowMs, config);
-
-    if (evalResult.action === 'SELL') {
-      console.warn(`[EXECUTER] Auto-sell triggered for ${pos.symbol || pos.mint}: ${evalResult.reason}`, evalResult.detail);
-
-      // Dispatch execution signal to pump.fun content scripts
-      await dispatchAutoSell(evalResult.updatedPosition, evalResult.reason, evalResult.detail);
-
-      // Record closed trade
-      newlyClosed.push({
-        ...evalResult.updatedPosition,
-        exitPrice: currentPrice,
-        exitMultiple: pos.entryPrice ? (currentPrice / pos.entryPrice) : 1.0,
-        exitReason: evalResult.reason,
-        exitDetail: evalResult.detail,
-        closedAtMs: nowMs
-      });
-    } else {
-      // Position remains open (HOLD or WAIT)
-      updatedPositions.push(evalResult.updatedPosition);
+/**
+ * Helper to normalize scored results (whether returned as Array or Object)
+ * into a dictionary keyed by post ID.
+ */
+function normalizeScoredResults(rawResults) {
+  const map = {};
+  if (Array.isArray(rawResults)) {
+    for (const item of rawResults) {
+      if (item && item.id) {
+        map[String(item.id)] = item;
+      }
+    }
+  } else if (rawResults && typeof rawResults === "object") {
+    for (const [k, v] of Object.entries(rawResults)) {
+      if (v && (v.id || k)) {
+        map[String(v.id || k)] = v;
+      }
     }
   }
+  return map;
+}
 
-  await chrome.storage.local.set({
-    [STORAGE_KEYS.POSITIONS]: updatedPositions,
-    [STORAGE_KEYS.CLOSED_TRADES]: [...newlyClosed, ...closedTrades].slice(0, 100),
-    lastPollMs: nowMs
+/**
+ * Call the local/remote bullshtt.ai proxy server
+ */
+async function callProxyScorer(proxyUrl, posts) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+  try {
+    const res = await fetch(proxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ posts }),
+      signal: controller.signal
+    });
+
+    if (!res.ok) {
+      throw new Error(`Proxy responded with HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    if (!data || !data.results) {
+      throw new Error("Invalid response format from proxy: missing results");
+    }
+
+    return normalizeScoredResults(data.results);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Direct fallback to Jev API (jev-1.14.0) using user's API key
+ */
+async function callDirectJevScorer(apiKey, posts) {
+  if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
+    throw new Error("No TypeSafe API key provided for direct fallback.");
+  }
+
+  const trimmedKey = apiKey.trim();
+  const payload = buildJevBatchRequest(posts, JEV_MODEL);
+
+  const res = await fetch(JEV_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${trimmedKey}`
+    },
+    body: JSON.stringify(payload),
+    redirect: "error"
   });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Jev API error HTTP ${res.status}: ${errText}`);
+  }
+
+  const responseData = await res.json();
+  console.log(`[bullshtt.ai] Jev model=${responseData.model || JEV_MODEL}`);
+
+  const rawResults = scoreBatchFromJev(posts, payload, responseData);
+  return normalizeScoredResults(rawResults);
 }
 
 /**
- * Dispatches an auto-sell instruction to any open pump.fun tabs.
+ * Core scoring flow: checks L1 cache, falls back to proxy, then direct Jev
  */
-async function dispatchAutoSell(position, reason, detail) {
-  try {
-    const tabs = await chrome.tabs.query({ url: '*://pump.fun/*' });
-    let executedInTab = false;
-
-    for (const tab of tabs) {
-      try {
-        await chrome.tabs.sendMessage(tab.id, {
-          type: 'EXECUTE_SELL',
-          position,
-          reason,
-          detail
-        });
-        executedInTab = true;
-      } catch (err) {
-        // Tab may not have content script ready
-      }
-    }
-
-    // Also send an optional desktop/browser notification
-    try {
-      if (chrome.notifications) {
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'icons/icon128.png',
-          title: `EXECUTER: Auto-Sell Fired (${reason})`,
-          message: `${position.symbol || 'Coin'} triggered ${reason}. Multiple: ${detail.multiple ? detail.multiple.toFixed(2) + 'x' : 'N/A'}.`,
-          priority: 2
-        });
-      }
-    } catch (e) {
-      // Notifications permission optional
-    }
-
-    return { executedInTab };
-  } catch (err) {
-    console.error('[EXECUTER] Error dispatching auto-sell:', err);
-    return { executedInTab: false, error: err.message };
+async function handleScorePosts(posts) {
+  if (!Array.isArray(posts) || posts.length === 0) {
+    return { success: true, results: {} };
   }
+
+  const settings = await getSettings();
+  const stats = await getStats();
+  const cache = await getCache();
+
+  const results = {};
+  const postsToScore = [];
+
+  // Step 1: L1 Cache check with postHash freshness
+  for (const post of posts) {
+    if (!post || !post.id) continue;
+    const expectedHash = computePostHash(post);
+    const cachedEntry = cache[String(post.id)];
+
+    if (cachedEntry && isCacheEntryFresh(cachedEntry, expectedHash)) {
+      results[String(post.id)] = cachedEntry;
+    } else {
+      postsToScore.push(post);
+    }
+  }
+
+  // If everything was cached, return immediately
+  if (postsToScore.length === 0) {
+    return { success: true, results, fromCache: true };
+  }
+
+  // Step 2: Score uncached posts
+  let newResults = null;
+  let usedProxy = false;
+  let usedDirectJev = false;
+  let lastError = null;
+
+  // Try proxy first
+  if (settings.proxyUrl) {
+    try {
+      newResults = await callProxyScorer(settings.proxyUrl, postsToScore);
+      usedProxy = true;
+    } catch (proxyErr) {
+      console.warn("[bullshtt.ai] Proxy unreachable or failed:", proxyErr.message);
+      lastError = proxyErr;
+    }
+  }
+
+  // If proxy failed, try direct Jev
+  if (!newResults && settings.typesafeApiKey) {
+    try {
+      newResults = await callDirectJevScorer(settings.typesafeApiKey, postsToScore);
+      usedDirectJev = true;
+    } catch (jevErr) {
+      console.error("[bullshtt.ai] Direct Jev call failed:", jevErr.message);
+      lastError = jevErr;
+    }
+  }
+
+  if (!newResults) {
+    return {
+      success: false,
+      results,
+      error: lastError ? lastError.message : "Proxy is offline and no TypeSafe API key is configured."
+    };
+  }
+
+  // Step 3: Update results, cache, and stats
+  const newlyScoredIds = Object.keys(newResults);
+  const updatedCache = { ...cache };
+  let newTotalScanned = stats.totalScanned;
+  let newStinkyCount = stats.stinkyCount;
+  let totalScoreSum = stats.avgStinkiness * stats.totalScanned;
+  const recentVerdicts = [...(stats.recentVerdicts || [])];
+
+  for (const postId of newlyScoredIds) {
+    const scored = newResults[postId];
+    if (!scored) continue;
+
+    // Ensure autoAnswerText and autoAnswerCompact exist
+    if (!scored.autoAnswerText) {
+      scored.autoAnswerText = formatAutoAnswer(scored, { style: "full" });
+    }
+    if (!scored.autoAnswerCompact) {
+      scored.autoAnswerCompact = formatAutoAnswer(scored, { style: "compact" });
+    }
+
+    results[postId] = scored;
+    updatedCache[postId] = scored;
+
+    // Match with original post for metadata
+    const originalPost = postsToScore.find((p) => String(p.id) === String(postId));
+
+    newTotalScanned += 1;
+    totalScoreSum += (scored.stinkinessPct || 0);
+
+    const threshold = settings.stinkinessThreshold || 75;
+    if ((scored.stinkinessPct || 0) >= threshold) {
+      newStinkyCount += 1;
+    }
+
+    // Add to recent verdicts list
+    recentVerdicts.unshift({
+      id: postId,
+      author: originalPost?.author || scored.author || "Unknown",
+      handle: originalPost?.handle || scored.handle || "@unknown",
+      textSnippet: (originalPost?.text || "").slice(0, 140),
+      stinkinessPct: scored.stinkinessPct,
+      verdictLabel: scored.verdictLabel,
+      evaluatedAt: scored.evaluatedAt || new Date().toISOString(),
+      autoAnswerText: scored.autoAnswerText,
+      autoAnswerCompact: scored.autoAnswerCompact,
+      signals: scored.signals || {},
+      url: originalPost?.url || ""
+    });
+  }
+
+  // Cap recent verdicts at 50
+  if (recentVerdicts.length > 50) {
+    recentVerdicts.length = 50;
+  }
+
+  const updatedStats = {
+    totalScanned: newTotalScanned,
+    stinkyCount: newStinkyCount,
+    avgStinkiness: newTotalScanned > 0 ? Math.round(totalScoreSum / newTotalScanned) : 0,
+    recentVerdicts
+  };
+
+  // Persist to storage
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.CACHE]: updatedCache,
+    [STORAGE_KEYS.STATS]: updatedStats
+  });
+
+  return {
+    success: true,
+    results,
+    usedProxy,
+    usedDirectJev
+  };
 }
 
-// Handle runtime messages from popup and content scripts
+// Runtime message router
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || !message.action) {
+    return false;
+  }
+
   (async () => {
     try {
-      if (message.type === 'GET_STATE') {
-        const data = await chrome.storage.local.get([
-          STORAGE_KEYS.POSITIONS,
-          STORAGE_KEYS.CLOSED_TRADES,
-          STORAGE_KEYS.CONFIG,
-          'lastPollMs'
-        ]);
-        sendResponse({
-          success: true,
-          positions: data[STORAGE_KEYS.POSITIONS] || [],
-          closedTrades: data[STORAGE_KEYS.CLOSED_TRADES] || [],
-          config: data[STORAGE_KEYS.CONFIG] || DEFAULT_CONFIG,
-          lastPollMs: data.lastPollMs || null
-        });
-        return;
-      }
-
-      if (message.type === 'ADD_POSITION') {
-        const { mint, symbol, entryPrice, openedAtMs } = message.payload;
-        if (!mint || !entryPrice || entryPrice <= 0) {
-          sendResponse({ success: false, error: 'Invalid mint or entry price' });
-          return;
+      switch (message.action) {
+        case "SCORE_POSTS": {
+          const res = await handleScorePosts(message.posts || []);
+          sendResponse(res);
+          break;
         }
 
-        const data = await chrome.storage.local.get([STORAGE_KEYS.POSITIONS]);
-        const positions = data[STORAGE_KEYS.POSITIONS] || [];
+        case "SCORE_SINGLE_TEXT": {
+          const text = (message.text || "").trim();
+          if (!text) {
+            sendResponse({ success: false, error: "Empty text provided" });
+            break;
+          }
 
-        // Check if already tracking
-        const existingIdx = positions.findIndex(p => p.mint === mint);
-        const nowMs = Date.now();
+          const mockPost = {
+            id: `manual_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            author: message.author || "Manual Prompt",
+            handle: message.handle || "@manual_test",
+            text,
+            url: "",
+            metrics: {}
+          };
 
-        const newPos = {
-          id: `pos_${mint.slice(0, 8)}_${nowMs}`,
-          mint,
-          symbol: symbol || `${mint.slice(0, 4)}...${mint.slice(-4)}`,
-          entryPrice: parseFloat(entryPrice),
-          peakPrice: parseFloat(entryPrice),
-          armed: false,
-          breachCount: 0,
-          openedAtMs: openedAtMs || nowMs,
-          lastCheckMs: nowMs,
-          lastPrice: parseFloat(entryPrice),
-          lastMultiple: 1.0
-        };
-
-        if (existingIdx >= 0) {
-          positions[existingIdx] = { ...positions[existingIdx], ...newPos };
-        } else {
-          positions.unshift(newPos);
+          const res = await handleScorePosts([mockPost]);
+          if (res.success && res.results[mockPost.id]) {
+            sendResponse({ success: true, scored: res.results[mockPost.id] });
+          } else {
+            sendResponse({ success: false, error: res.error || "Scoring failed" });
+          }
+          break;
         }
 
-        await chrome.storage.local.set({ [STORAGE_KEYS.POSITIONS]: positions });
-        console.log(`[EXECUTER] Added position for ${newPos.symbol} (${mint}) at ${entryPrice}`);
-
-        // Trigger immediate background poll
-        pollAllPositions();
-
-        sendResponse({ success: true, position: newPos });
-        return;
-      }
-
-      if (message.type === 'REMOVE_POSITION') {
-        const { mint } = message.payload;
-        const data = await chrome.storage.local.get([STORAGE_KEYS.POSITIONS]);
-        const positions = (data[STORAGE_KEYS.POSITIONS] || []).filter(p => p.mint !== mint);
-        await chrome.storage.local.set({ [STORAGE_KEYS.POSITIONS]: positions });
-        sendResponse({ success: true });
-        return;
-      }
-
-      if (message.type === 'PANIC_SELL') {
-        const { mint } = message.payload;
-        const data = await chrome.storage.local.get([
-          STORAGE_KEYS.POSITIONS,
-          STORAGE_KEYS.CLOSED_TRADES
-        ]);
-        const positions = data[STORAGE_KEYS.POSITIONS] || [];
-        const closedTrades = data[STORAGE_KEYS.CLOSED_TRADES] || [];
-
-        const targetPos = positions.find(p => p.mint === mint);
-        if (!targetPos) {
-          sendResponse({ success: false, error: 'Position not found' });
-          return;
+        case "GET_STATE": {
+          const settings = await getSettings();
+          const stats = await getStats();
+          const cache = await getCache();
+          sendResponse({
+            success: true,
+            settings,
+            stats,
+            cacheSize: Object.keys(cache).length
+          });
+          break;
         }
 
-        const nowMs = Date.now();
-        const quote = await fetchTokenPrice(mint);
-        const exitPrice = quote ? quote.price : targetPos.lastPrice || targetPos.entryPrice;
+        case "UPDATE_SETTINGS": {
+          const current = await getSettings();
+          const updated = { ...current, ...(message.settings || {}) };
+          await chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: updated });
+          sendResponse({ success: true, settings: updated });
+          break;
+        }
 
-        await dispatchAutoSell(targetPos, 'panic_sell', { manual: true, exitPrice });
+        case "CLEAR_CACHE": {
+          await chrome.storage.local.set({ [STORAGE_KEYS.CACHE]: {} });
+          sendResponse({ success: true });
+          break;
+        }
 
-        const updatedPositions = positions.filter(p => p.mint !== mint);
-        const closedEntry = {
-          ...targetPos,
-          exitPrice,
-          exitMultiple: exitPrice / targetPos.entryPrice,
-          exitReason: 'panic_sell',
-          exitDetail: { manual: true, timestamp: nowMs },
-          closedAtMs: nowMs
-        };
+        case "TEST_CONNECTION": {
+          const settings = await getSettings();
+          let proxyOk = false;
+          let jevOk = false;
+          let error = null;
 
-        await chrome.storage.local.set({
-          [STORAGE_KEYS.POSITIONS]: updatedPositions,
-          [STORAGE_KEYS.CLOSED_TRADES]: [closedEntry, ...closedTrades].slice(0, 100)
-        });
+          // Test proxy
+          if (settings.proxyUrl) {
+            try {
+              const pingUrl = settings.proxyUrl.includes("/api/score")
+                ? settings.proxyUrl.replace(/\/api\/score\/?$/, "/api/health")
+                : `${settings.proxyUrl.replace(/\/$/, "")}/api/health`;
 
-        sendResponse({ success: true, closedTrade: closedEntry });
-        return;
+              const res = await fetch(pingUrl, { method: "GET" });
+              if (res.ok) proxyOk = true;
+            } catch {
+              // Ignore proxy ping failure
+            }
+          }
+
+          // Test Jev API if key is present
+          if (settings.typesafeApiKey) {
+            try {
+              const res = await fetch(JEV_ENDPOINT, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${settings.typesafeApiKey.trim()}`
+                },
+                body: JSON.stringify({
+                  model: JEV_MODEL,
+                  questions: {
+                    ping_test: {
+                      type: "score",
+                      instructions: "Health ping."
+                    }
+                  }
+                }),
+                redirect: "error"
+              });
+              if (res.ok) jevOk = true;
+            } catch (err) {
+              error = err.message;
+            }
+          }
+
+          sendResponse({ success: true, proxyOk, jevOk, error });
+          break;
+        }
+
+        default:
+          sendResponse({ success: false, error: `Unknown action: ${message.action}` });
       }
-
-      if (message.type === 'UPDATE_CONFIG') {
-        const { config } = message.payload;
-        const merged = { ...DEFAULT_CONFIG, ...config };
-        await chrome.storage.local.set({ [STORAGE_KEYS.CONFIG]: merged });
-        startIntervalPoller();
-        sendResponse({ success: true, config: merged });
-        return;
-      }
-
-      if (message.type === 'RESET_CONFIG') {
-        await chrome.storage.local.set({ [STORAGE_KEYS.CONFIG]: DEFAULT_CONFIG });
-        startIntervalPoller();
-        sendResponse({ success: true, config: DEFAULT_CONFIG });
-        return;
-      }
-
-      if (message.type === 'POLL_NOW') {
-        await pollAllPositions();
-        sendResponse({ success: true });
-        return;
-      }
-
-      sendResponse({ success: false, error: 'Unknown message type' });
     } catch (err) {
-      console.error('[EXECUTER] Error handling message:', err);
-      sendResponse({ success: false, error: err.message });
+      console.error("[bullshtt.ai] Error in background script:", err);
+      sendResponse({ success: false, error: err.message || String(err) });
     }
   })();
 
